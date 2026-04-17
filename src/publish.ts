@@ -5,6 +5,8 @@ import {
 
 import ImageTagProcessor, {ACTION_PUBLISH} from "./uploader/imageTagProcessor";
 import ImageUploader from "./uploader/imageUploader";
+import BatchUploader from "./uploader/batchUploader";
+import StoreSwitcher from "./uploader/storeSwitcher";
 import type {ImgurAnonymousSetting} from "./uploader/imgur/imgurAnonymousUploader";
 import {IMGUR_PLUGIN_CLIENT_ID} from "./uploader/imgur/constants";
 import ImageStore from "./imageStore";
@@ -54,6 +56,14 @@ export interface PublishSettings {
     secondGithubSetting: GitHubSetting;
     secondR2Setting: R2Setting;
     secondB2Setting: B2Setting;
+    // WebP 转换
+    convertToWebp: boolean;
+    webpQuality: number; // 1-100
+    // 批量上传
+    batchExcludePaths: string;
+    // 图床切换
+    switchSourceDomain: string;
+    switchTargetDomain: string;
 }
 
 const DEFAULT_SETTINGS: PublishSettings = {
@@ -203,6 +213,14 @@ const DEFAULT_SETTINGS: PublishSettings = {
         path: "",
         customDomainName: "",
     },
+    // WebP 转换默认值
+    convertToWebp: false,
+    webpQuality: 80,
+    // 批量上传默认值
+    batchExcludePaths: "",
+    // 图床切换默认值
+    switchSourceDomain: "",
+    switchTargetDomain: "",
 };
 export default class ObsidianPublish extends Plugin {
     settings: PublishSettings;
@@ -227,6 +245,29 @@ export default class ObsidianPublish extends Plugin {
                 return true;
             }
         });
+
+        this.addCommand({
+            id: "upload-all-notes",
+            name: "批量上传笔记图片",
+            checkCallback: (checking: boolean) => {
+                if (!checking) {
+                    this.batchUpload();
+                }
+                return true;
+            }
+        });
+
+        this.addCommand({
+            id: "switch-image-store",
+            name: "图床切换",
+            checkCallback: (checking: boolean) => {
+                if (!checking) {
+                    this.switchImageStore();
+                }
+                return true;
+            }
+        });
+
         this.addSettingTab(new PublishSettingTab(this.app, this));
     }
 
@@ -258,11 +299,44 @@ export default class ObsidianPublish extends Plugin {
 
     private publish(): void {
         if (!this.imageUploader) {
-            new Notice("图片上传器设置失败，请检查设置。")
+            new Notice("图片上传器设置失败，请检查设置。");
         } else {
             this.imageTagProcessor.process(ACTION_PUBLISH).then(() => {
             });
         }
+    }
+
+    private batchUpload(): void {
+        if (!this.imageUploader) {
+            new Notice("图片上传器设置失败，请检查设置。");
+            return;
+        }
+        const excludePaths = (this.settings.batchExcludePaths || "")
+            .split(",")
+            .map(p => p.trim())
+            .filter(Boolean);
+
+        const batcher = new BatchUploader(
+            this.app,
+            this.settings,
+            this.imageUploader,
+            this.secondImageUploader,
+            {
+                excludePaths,
+                useModal: this.settings.showProgressModal,
+            }
+        );
+        batcher.run();
+    }
+
+    private switchImageStore(): void {
+        const {switchSourceDomain, switchTargetDomain} = this.settings;
+        if (!switchSourceDomain || !switchTargetDomain) {
+            new Notice("请先在设置中配置源域名和目标域名后再执行图床切换。", 5000);
+            return;
+        }
+        const switcher = new StoreSwitcher(this.app, this.settings);
+        switcher.switch(switchSourceDomain, switchTargetDomain);
     }
 
     setupImageUploader(): void {

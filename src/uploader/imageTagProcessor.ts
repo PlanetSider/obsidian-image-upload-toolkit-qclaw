@@ -7,6 +7,7 @@ import {WebImageDownloader} from "./webImageDownloader";
 import MermaidProcessor from "./mermaidProcessor";
 import ImageStore from "../imageStore";
 import {logUploadFailures, FailureEntry} from "./uploadFailureLogger";
+import {convertToWebp} from "./imageConverter";
 
 export const MD_REGEX = /\!\[(.*)\]\((.*?\.(png|jpg|jpeg|gif|svg|webp|excalidraw))\)/g;
 export const WIKI_REGEX = /\!\[\[(.*?\.(png|jpg|jpeg|gif|svg|webp|excalidraw))(|.*)?\]\]/g;
@@ -136,6 +137,19 @@ export default class ImageTagProcessor {
         await logUploadFailures(this.app, [entry]);
     }
 
+    /**
+     * 如果启用了 WebP 转换，将文件转为 WebP 后返回新 File；
+     * 否则直接返回原文件。
+     * GIF 动图转 Animated WebP。
+     */
+    private async convertFile(file: File): Promise<File> {
+        if (!this.settings.convertToWebp) {
+            return file;
+        }
+        const quality = (this.settings.webpQuality ?? 80) / 100;
+        return convertToWebp(file, quality);
+    }
+
     public async process(action: string): Promise<void> {
         let value = this.getValue();
         const basePath = this.adapter.getBasePath();
@@ -166,7 +180,8 @@ export default class ImageTagProcessor {
                     try {
                         // Download the web image
                         const downloadResult = await WebImageDownloader.download(image.path);
-                        const file = new File([downloadResult.buffer], downloadResult.filename);
+                        const rawFile = new File([downloadResult.buffer], downloadResult.filename);
+                        const file = await this.convertFile(rawFile);
 
                         // Upload to cloud storage - use just the filename as fullPath for web images
                         // since they don't have a real file system path
@@ -208,7 +223,8 @@ export default class ImageTagProcessor {
             
             try {
                 const buf = await this.adapter.readBinary(image.path);
-                const file = new File([buf], image.name);
+                const rawFile = new File([buf], image.name);
+                const file = await this.convertFile(rawFile);
                 const fullPath = basePath + '/' + image.path;
                 promises.push(new Promise<Image>((resolve, reject) => {
                     uploader.upload(file, fullPath)

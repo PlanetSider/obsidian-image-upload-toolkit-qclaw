@@ -70,6 +70,29 @@ export default class PublishSettingTab extends PluginSettingTab {
                     .onChange(value => this.plugin.settings.uploadWebImages = value)
             );
 
+        // ── WebP 转换 ──
+        containerEl.createEl("h2", {text: "WebP 转换"});
+
+        new Setting(containerEl)
+            .setName("转换为 WebP 格式")
+            .setDesc("上传前将图片转换为 WebP 格式，可减小文件体积。GIF 动图会转换为 Animated WebP。")
+            .addToggle(toggle =>
+                toggle
+                    .setValue(this.plugin.settings.convertToWebp)
+                    .onChange(value => this.plugin.settings.convertToWebp = value)
+            );
+
+        new Setting(containerEl)
+            .setName("WebP 质量")
+            .setDesc(`图片压缩质量（1-100），数值越大质量越高但体积越大。当前值：${this.plugin.settings.webpQuality}。`)
+            .addSlider(slider =>
+                slider
+                    .setLimits(1, 100, 1)
+                    .setValue(this.plugin.settings.webpQuality)
+                    .setDynamicTooltip()
+                    .onChange(value => this.plugin.settings.webpQuality = value)
+            );
+
         // ── Mermaid ──
         containerEl.createEl("h2", {text: "Mermaid"});
 
@@ -130,6 +153,42 @@ export default class PublishSettingTab extends PluginSettingTab {
                 });
             });
         this.drawImageStoreSettings(this.imageStoreDiv);
+
+        // ── 批量上传 ──
+        containerEl.createEl("h2", {text: "批量上传"});
+
+        new Setting(containerEl)
+            .setName("排除路径")
+            .setDesc("批量上传时排除的文件夹路径，多个路径用英文逗号分隔。例如：templates, daily, .trash。注：.obsidian 目录会自动排除。")
+            .addText(text =>
+                text
+                    .setPlaceholder("templates, daily")
+                    .setValue(this.plugin.settings.batchExcludePaths)
+                    .onChange(value => this.plugin.settings.batchExcludePaths = value)
+            );
+
+        // ── 图床切换 ──
+        containerEl.createEl("h2", {text: "图床切换"});
+
+        new Setting(containerEl)
+            .setName("源域名")
+            .setDesc("要替换的图片链接中的源域名。例如：i.imgur.com。留空则不执行图床切换命令。")
+            .addText(text =>
+                text
+                    .setPlaceholder("例如：i.imgur.com")
+                    .setValue(this.plugin.settings.switchSourceDomain)
+                    .onChange(value => this.plugin.settings.switchSourceDomain = value)
+            );
+
+        new Setting(containerEl)
+            .setName("目标域名")
+            .setDesc("替换后的目标域名。例如：cdn.example.com。请确保目标图床中已存在相同路径的图片文件。")
+            .addText(text =>
+                text
+                    .setPlaceholder("例如：cdn.example.com")
+                    .setValue(this.plugin.settings.switchTargetDomain)
+                    .onChange(value => this.plugin.settings.switchTargetDomain = value)
+            );
 
         // ── 第二图床 ──
         containerEl.createEl("h2", {text: "第二图床"});
