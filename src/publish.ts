@@ -41,6 +41,19 @@ export interface PublishSettings {
     githubSetting: GitHubSetting;
     r2Setting: R2Setting;
     b2Setting: B2Setting;
+    // 第二网盘
+    enableSecondStore: boolean;
+    secondImageStore: string;
+    secondImgurAnonymousSetting: ImgurAnonymousSetting;
+    secondGyazoSetting: GyazoSetting;
+    secondOssSetting: OssSetting;
+    secondImagekitSetting: ImagekitSetting;
+    secondAwsS3Setting: AwsS3Setting;
+    secondCosSetting: CosSetting;
+    secondKodoSetting: KodoSetting;
+    secondGithubSetting: GitHubSetting;
+    secondR2Setting: R2Setting;
+    secondB2Setting: B2Setting;
 }
 
 const DEFAULT_SETTINGS: PublishSettings = {
@@ -120,11 +133,82 @@ const DEFAULT_SETTINGS: PublishSettings = {
         path: "",
         customDomainName: "",
     },
+    // 第二网盘默认值
+    enableSecondStore: false,
+    secondImageStore: ImageStore.IMGUR.id,
+    secondImgurAnonymousSetting: {clientId: IMGUR_PLUGIN_CLIENT_ID},
+    secondGyazoSetting: {
+        accessToken: "",
+        accessPolicy: "anyone",
+        desc: "",
+    },
+    secondOssSetting: {
+        region: "oss-cn-hangzhou",
+        accessKeyId: "",
+        accessKeySecret: "",
+        bucket: "",
+        endpoint: "https://oss-cn-hangzhou.aliyuncs.com/",
+        path: "",
+        customDomainName: "",
+    },
+    secondImagekitSetting: {
+        endpoint: "",
+        imagekitID: "",
+        privateKey: "",
+        publicKey: "",
+        folder: "",
+    },
+    secondAwsS3Setting: {
+        accessKeyId: "",
+        secretAccessKey: "",
+        region: "",
+        bucketName: "",
+        path: "",
+        customDomainName: "",
+    },
+    secondCosSetting: {
+        region: "",
+        bucket: "",
+        secretId: "",
+        secretKey: "",
+        path: "",
+        customDomainName: "",
+    },
+    secondKodoSetting: {
+        accessKey: "",
+        secretKey: "",
+        bucket: "",
+        customDomainName: "",
+        path: ""
+    },
+    secondGithubSetting: {
+        repositoryName: "",
+        branchName: "main",
+        token: "",
+        path: "images"
+    },
+    secondR2Setting: {
+        accessKeyId: "",
+        secretAccessKey: "",
+        endpoint: "",
+        bucketName: "",
+        path: "",
+        customDomainName: "",
+    },
+    secondB2Setting: {
+        accessKeyId: "",
+        secretAccessKey: "",
+        region: "",
+        bucketName: "",
+        path: "",
+        customDomainName: "",
+    },
 };
 export default class ObsidianPublish extends Plugin {
     settings: PublishSettings;
     imageTagProcessor: ImageTagProcessor;
     imageUploader: ImageUploader;
+    secondImageUploader: ImageUploader | null = null;
     statusBarItem: HTMLElement;
 
     async onload() {
@@ -135,7 +219,7 @@ export default class ObsidianPublish extends Plugin {
         
         this.addCommand({
             id: "publish-page",
-            name: "Publish Page",
+            name: "发布页面",
             checkCallback: (checking: boolean) => {
                 if (!checking) {
                     this.publish()
@@ -154,7 +238,18 @@ export default class ObsidianPublish extends Plugin {
         const loadedData = (await this.loadData()) as Partial<PublishSettings> | null;
         this.settings = Object.assign({}, DEFAULT_SETTINGS, loadedData);
         this.settings.imageStore = ImageStore.normalizeId(this.settings.imageStore);
+        // 合并图床设置（原有 + 新增的第二网盘）
         this.settings.gyazoSetting = Object.assign({}, DEFAULT_SETTINGS.gyazoSetting, loadedData?.gyazoSetting);
+        this.settings.secondGyazoSetting = Object.assign({}, DEFAULT_SETTINGS.secondGyazoSetting, loadedData?.secondGyazoSetting);
+        this.settings.secondOssSetting = Object.assign({}, DEFAULT_SETTINGS.secondOssSetting, loadedData?.secondOssSetting);
+        this.settings.secondCosSetting = Object.assign({}, DEFAULT_SETTINGS.secondCosSetting, loadedData?.secondCosSetting);
+        this.settings.secondKodoSetting = Object.assign({}, DEFAULT_SETTINGS.secondKodoSetting, loadedData?.secondKodoSetting);
+        this.settings.secondGithubSetting = Object.assign({}, DEFAULT_SETTINGS.secondGithubSetting, loadedData?.secondGithubSetting);
+        this.settings.secondR2Setting = Object.assign({}, DEFAULT_SETTINGS.secondR2Setting, loadedData?.secondR2Setting);
+        this.settings.secondB2Setting = Object.assign({}, DEFAULT_SETTINGS.secondB2Setting, loadedData?.secondB2Setting);
+        this.settings.secondImagekitSetting = Object.assign({}, DEFAULT_SETTINGS.secondImagekitSetting, loadedData?.secondImagekitSetting);
+        this.settings.secondAwsS3Setting = Object.assign({}, DEFAULT_SETTINGS.secondAwsS3Setting, loadedData?.secondAwsS3Setting);
+        this.settings.secondImgurAnonymousSetting = Object.assign({}, DEFAULT_SETTINGS.secondImgurAnonymousSetting, loadedData?.secondImgurAnonymousSetting);
     }
 
     async saveSettings() {
@@ -163,7 +258,7 @@ export default class ObsidianPublish extends Plugin {
 
     private publish(): void {
         if (!this.imageUploader) {
-            new Notice("Image uploader setup failed, please check setting.")
+            new Notice("图片上传器设置失败，请检查设置。")
         } else {
             this.imageTagProcessor.process(ACTION_PUBLISH).then(() => {
             });
@@ -173,12 +268,17 @@ export default class ObsidianPublish extends Plugin {
     setupImageUploader(): void {
         try {
             this.imageUploader = buildUploader(this.settings);
+            // 第二网盘
+            this.secondImageUploader = this.settings.enableSecondStore
+                ? buildUploader(this.settings, this.settings.secondImageStore)
+                : null;
             // Create ImageTagProcessor with the user's preference for modal vs status bar
             this.imageTagProcessor = new ImageTagProcessor(
-                this.app, 
-                this.settings, 
-                this.imageUploader, 
-                this.settings.showProgressModal, // Use modal based on setting
+                this.app,
+                this.settings,
+                this.imageUploader,
+                this.settings.showProgressModal,
+                this.secondImageUploader,
             );
         } catch (e) {
             console.log(`Failed to setup image uploader: ${e}`)

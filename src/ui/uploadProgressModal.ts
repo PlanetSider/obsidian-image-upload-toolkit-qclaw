@@ -11,7 +11,7 @@ export default class UploadProgressModal extends Modal {
     
     constructor(app) {
         super(app);
-        this.titleEl.setText("Uploading Images");
+        this.titleEl.setText("正在上传图片");
     }
     
     /**
@@ -44,7 +44,7 @@ export default class UploadProgressModal extends Modal {
         this.statusEl = progressSection.createDiv({cls: "status-indicator"});
         const statusIconContainer = this.statusEl.createSpan({cls: "status-icon"});
         setIcon(statusIconContainer, "upload-cloud");
-        this.statusEl.createSpan({text: "Uploading...", cls: "status-text"});
+        this.statusEl.createSpan({text: "正在上传...", cls: "status-text"});
         
         // Progress bar container
         const progressBarContainer = progressSection.createDiv({cls: "progress-bar-container"});
@@ -57,7 +57,7 @@ export default class UploadProgressModal extends Modal {
         // Image list (if we have image names)
         if (this.imageStatus.size > 0) {
             const imageListContainer = contentEl.createDiv({cls: "image-list-container"});
-            imageListContainer.createEl("h3", {text: "Images"});
+            imageListContainer.createEl("h3", {text: "图片列表"});
             this.imageListEl = imageListContainer.createDiv({cls: "image-list"});
             this.renderImageList();
         }
@@ -95,7 +95,7 @@ export default class UploadProgressModal extends Modal {
             this.statusEl.empty();
             const statusIconContainer = this.statusEl.createSpan({cls: "status-icon"});
             setIcon(statusIconContainer, "check");
-            this.statusEl.createSpan({text: "Complete", cls: "status-text"});
+            this.statusEl.createSpan({text: "完成", cls: "status-text"});
             
             // Auto-close after 3 seconds
             setTimeout(() => {

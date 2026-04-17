@@ -17,7 +17,7 @@
     "@vitest/coverage-v8": "^4.1.0",
     "esbuild": "^0.18.20",
     "jsdom": "^29.0.0",
-    "obsidian": "obsidianmd/obsidian-api",
+    "obsidian": "npm:obsidian@^1.1.1",
     "obsidian-plugin-cli": "^0.4.3",
     "typescript": "^4.0.3",
     "vitest": "^4.1.0"

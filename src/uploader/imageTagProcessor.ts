@@ -6,6 +6,7 @@ import UploadProgressModal from "../ui/uploadProgressModal";
 import {WebImageDownloader} from "./webImageDownloader";
 import MermaidProcessor from "./mermaidProcessor";
 import ImageStore from "../imageStore";
+import {logUploadFailures, FailureEntry} from "./uploadFailureLogger";
 
 export const MD_REGEX = /\!\[(.*)\]\((.*?\.(png|jpg|jpeg|gif|svg|webp|excalidraw))\)/g;
 export const WIKI_REGEX = /\!\[\[(.*?\.(png|jpg|jpeg|gif|svg|webp|excalidraw))(|.*)?\]\]/g;
@@ -81,17 +82,58 @@ export const ACTION_PUBLISH: string = "PUBLISH";
 export default class ImageTagProcessor {
     private readonly app: App;
     private readonly imageUploader: ImageUploader;
+    private readonly secondImageUploader: ImageUploader | null;
     private settings: PublishSettings;
     private adapter: FileSystemAdapter;
     private progressModal: UploadProgressModal | null = null;
     private readonly useModal: boolean = true; // Set to true to use modal, false to use status bar
 
-    constructor(app: App, settings: PublishSettings, imageUploader: ImageUploader, useModal: boolean = true) {
+    constructor(
+        app: App,
+        settings: PublishSettings,
+        imageUploader: ImageUploader,
+        useModal: boolean = true,
+        secondImageUploader: ImageUploader | null = null,
+    ) {
         this.app = app;
         this.adapter = this.app.vault.adapter as FileSystemAdapter;
         this.settings = settings;
         this.imageUploader = imageUploader;
         this.useModal = useModal;
+        this.secondImageUploader = secondImageUploader;
+    }
+
+    /** 获取当前笔记路径 */
+    private getCurrentNotePath(): string {
+        const file = this.app.workspace.getActiveFile();
+        return file ? file.path : "未知笔记";
+    }
+
+    /** 上传到第二网盘（失败重试3次） */
+    private async uploadToSecondStore(file: File, fullPath: string): Promise<void> {
+        if (!this.secondImageUploader) return;
+        const maxRetries = 3;
+        let lastError: Error | null = null;
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                await this.secondImageUploader.upload(file, fullPath);
+                return; // 成功
+            } catch (e) {
+                lastError = e instanceof Error ? e : new Error(String(e));
+                if (i < maxRetries - 1) {
+                    new Notice(`第二网盘上传失败，第 ${i + 2} 次重试中...`, 3000);
+                }
+            }
+        }
+        // 重试全部失败，记录到 upload-failures.md
+        const fileName = fullPath.split("/").pop() ?? file.name;
+        const entry: FailureEntry = {
+            notePath: this.getCurrentNotePath(),
+            imageName: fileName,
+            error: lastError?.message ?? "未知错误",
+            timestamp: new Date().toISOString(),
+        };
+        await logUploadFailures(this.app, [entry]);
     }
 
     public async process(action: string): Promise<void> {
@@ -125,12 +167,15 @@ export default class ImageTagProcessor {
                         // Download the web image
                         const downloadResult = await WebImageDownloader.download(image.path);
                         const file = new File([downloadResult.buffer], downloadResult.filename);
-                        
+
                         // Upload to cloud storage - use just the filename as fullPath for web images
                         // since they don't have a real file system path
                         const imgUrl = await uploader.upload(file, downloadResult.filename);
                         image.url = imgUrl;
-                        
+
+                        // 第二网盘上传（非阻塞，不影响主流程）
+                        this.uploadToSecondStore(file, downloadResult.filename);
+
                         // Update progress on successful upload
                         if (this.progressModal) {
                             this.progressModal.updateProgress(image.name, true);
@@ -141,7 +186,7 @@ export default class ImageTagProcessor {
                         if (this.progressModal) {
                             this.progressModal.updateProgress(image.name, false);
                         }
-                        const errorMessage = `Upload web image ${image.path} failed: ${e.error || e.message || e}`;
+                        const errorMessage = `上传网络图片 ${image.path} 失败：${e.error || e.message || e}`;
                         new Notice(errorMessage, 10000);
                         console.error('Web image upload error:', e);
                         reject(new Error(errorMessage));
@@ -152,7 +197,7 @@ export default class ImageTagProcessor {
             
             // Handle local images
             if (this.app.vault.getAbstractFileByPath(normalizePath(image.path)) == null) {
-                new Notice(`Can NOT locate ${image.name} with ${image.path}, please check image path or attachment option in plugin setting!`, 10000);
+                new Notice(`找不到图片 ${image.name}（路径：${image.path}），请检查图片路径或插件设置中的附件选项！`, 10000);
                 console.log(`${normalizePath(image.path)} not exist`);
                 // Update the progress modal with the failure
                 if (this.progressModal) {
@@ -163,10 +208,14 @@ export default class ImageTagProcessor {
             
             try {
                 const buf = await this.adapter.readBinary(image.path);
+                const file = new File([buf], image.name);
+                const fullPath = basePath + '/' + image.path;
                 promises.push(new Promise<Image>((resolve, reject) => {
-                    uploader.upload(new File([buf], image.name), basePath + '/' + image.path)
+                    uploader.upload(file, fullPath)
                         .then(imgUrl => {
                             image.url = imgUrl;
+                            // 第二网盘上传（非阻塞，不影响主流程）
+                            this.uploadToSecondStore(file, fullPath);
                             // Update progress on successful upload
                             if (this.progressModal) {
                                 this.progressModal.updateProgress(image.name, true);
@@ -178,14 +227,14 @@ export default class ImageTagProcessor {
                             if (this.progressModal) {
                                 this.progressModal.updateProgress(image.name, false);
                             }
-                            const errorMessage = `Upload ${image.path} failed, remote server returned an error: ${e.error || e.message || e}`;
+                            const errorMessage = `上传 ${image.path} 失败，远程服务器返回错误：${e.error || e.message || e}`;
                             new Notice(errorMessage, 10000);
                             reject(new Error(errorMessage));
                         });
                 }));
             } catch (error) {
                 console.error(`Failed to read file: ${image.path}`, error);
-                new Notice(`Failed to read file: ${image.path}`, 5000);
+                new Notice(`读取文件失败：${image.path}`, 5000);
             }
         }
 
@@ -248,7 +297,7 @@ export default class ImageTagProcessor {
         switch (action) {
             case ACTION_PUBLISH:
                 navigator.clipboard.writeText(value);
-                new Notice("Copied to clipboard");
+                new Notice("已复制到剪贴板");
                 break;
             default:
                 throw new Error("invalid action!");
