@@ -203,6 +203,7 @@ export default class PublishSettingTab extends PluginSettingTab {
                         this.plugin.settings.enableSecondStore = value;
                         await this.plugin.saveSettings();
                         this.plugin.setupImageUploader();
+                        this.display(); // 重新渲染设置面板，显示/隐藏第二图床配置
                     })
             );
 
